@@ -1,0 +1,198 @@
+#----------------------------------------------------------------------------------------
+# Mac OS 8 Boot Script for Plymouth
+# An attempt to a pixel-perfect recreation of the Mac OS 8 boot sequence in Plymouth 
+# 		by akasaka, 2019
+# Ⓒ Genjitsu Labs, 2019; All rights reserved
+# Graphics Ⓒ Apple Computer, Inc, 1997
+# Apple Computer, Macintosh, Mac OS and Apple are registered trademarks of Apple, Inc.
+# You are free to use and modify this script as long as the above lines are preserved.
+#----------------------------------------------------------------------------------------
+#	Revision 1.0:	Jan 11, 2019
+#		Initial revision, supports: boot/shutdown/message
+#		Todo: add password, question, input ?
+#----------------------------------------------------------------------------------------
+
+// Frame counter timer
+timer = 0;
+// Stage state variable:
+/*
+	-2		Dialog
+	-1		Invalid for animation, i.e. within a message or shutdown context
+	 0		"Welcome to Macintosh" dialog
+	 1		Startup progress dialog
+*/
+stage = 0;
+// Current mode container
+mode = Plymouth.GetMode();
+
+
+if(mode == "boot") {
+	// Prepare stage for boot mode
+	// Note: this is a New World Mac boot-time color
+	Window.SetBackgroundTopColor (0.3, 0.3, 0.3);
+	Window.SetBackgroundBottomColor (0.3, 0.3, 0.3);
+	// Load the image of a checkerboard pattern 2x2 repeated to 200x200 (with 2x2 Plymouth hangs)
+	chk = Image("checker.png");
+
+	// Start from bottom right corner
+	y = Window.GetHeight()-200; 
+	array = []; // If we don't store sprites, Plymouth ignores them for some reason
+	ai = 0;
+	// Fill whole screen with the 2x2 checkered pattern
+	while ( y > -200 ) {
+		x = Window.GetWidth()-200;
+		while ( x > -200 ) {
+			array[ai] = Sprite(chk);
+			array[ai].SetPosition(x, y, 1);
+			ai++;
+			x -= 200;
+		}
+		y -= 200;
+	}
+}
+
+
+if(mode == "boot") {
+	// Welcome to Macintosh dialog
+	picasso = Image("picasso.png");
+} else if(mode == "shutdown") {
+	// It is now safe to turn off your Macintosh...
+	picasso = Image("shutdown.png");
+	stage = -1;
+} else {
+	// Whatever is happening, just do a black screen
+	stage = -1;
+}
+
+// Place dialog on screen
+welcome = Sprite(picasso);
+picasso_x = Window.GetWidth() / 2  -  picasso.GetWidth() / 2 ;
+picasso_y = Window.GetHeight() / 3  -  picasso.GetHeight() / 2;
+welcome.SetPosition( picasso_x, picasso_y, 2);
+
+// Boot window
+backdrop = Image("os8_boot.png");
+boot = Sprite(backdrop);
+boot.SetOpacity(0); // hidden for now
+boot_x = Window.GetWidth() / 2  -  backdrop.GetWidth() / 2;
+boot_y = Window.GetHeight() / 3  -  backdrop.GetHeight() / 2;
+boot.SetPosition( boot_x, boot_y, 2);
+
+#--------------------------------------- Extension Icon --------------------------------
+
+// Position of next icon
+extz_x = 16;
+extz_y = Window.GetHeight() - 48;
+// All icons
+icons = [];
+icon_i = 0;
+
+// Display a new 32x32 icon from png name
+fun spawn_icon(iname)
+{
+	next_icon = Image(iname);
+	icons[icon_i] = Sprite(next_icon);
+	icons[icon_i].SetPosition(extz_x, extz_y, 2);
+	icon_i ++;
+	extz_x += 40; 
+}
+
+// Hide all icons (i.e. before showing a dialog)
+fun hide_icons() {
+	i = 0;
+	for(i = 0; i < icon_i; i++) {
+		icons[i].SetOpacity(0);
+	}
+}
+
+#----------------------------------------- Progress Bar --------------------------------
+
+progress_bar.original_image = Image("os8_swatch.png");
+progress_bar.sprite = Sprite();
+
+progress_bar.x = boot_x + 132; 
+progress_bar.y = boot_y + 292;
+progress_bar.sprite.SetPosition(progress_bar.x, progress_bar.y, 3);
+
+fun progress_callback (duration, progress)
+  {
+    if (progress_bar.image.GetWidth () != Math.Int (158 * progress))
+      {
+        progress_bar.image = progress_bar.original_image.Scale(158 * progress, progress_bar.original_image.GetHeight());
+        progress_bar.sprite.SetImage (progress_bar.image);
+      }
+  }
+
+#----------------------------------------- Frame Handler--------------------------------
+
+// Icon name storage
+cur_icon = 0;
+max_icon = 13;
+icons = ["8help", "8dbus", "8graphic", "8media", "8script", "9accel", "9macintalk", "9nodisp", "9sound", "9tv", "9media", "9vrml", "9flash", "9pcexchange"];
+
+// Every-frame function
+fun refresh_callback ()
+  {
+    timer++;
+
+    # Transition from Welcome to Boot in about 500ms
+    if ( stage == 0 && timer >= 25 ) {
+    	welcome.SetOpacity(0);
+    	boot.SetOpacity(1);
+    	Plymouth.SetBootProgressFunction(progress_callback);
+    	stage = 1;
+    }
+
+    if (stage == 1 && timer % 52 == 0) {
+    	if(cur_icon < max_icon) {
+    		spawn_icon( "icons/" + icons[cur_icon] + ".png" );
+    		cur_icon ++;
+   		}
+    }
+  }
+  
+Plymouth.SetRefreshFunction (refresh_callback);
+
+
+#----------------------------------------- Dialog --------------------------------
+
+picasso_text_x = 84;
+picasso_text_y = 21;
+
+fun dialog_setup()
+  {
+    picasso = Image("message.png");
+    welcome.SetImage(picasso);
+    welcome.SetOpacity(1);
+    boot.SetOpacity(0);
+    progress_bar.sprite.SetOpacity(0);
+    stage = -2;
+    hide_icons();
+  }
+
+fun display_normal_callback ()
+  {
+  	if(stage == -2) {
+	    welcome.SetOpacity(0);
+    	boot.SetOpacity(1);
+    	progress_bar.sprite.SetOpacity(1);
+    	stage = 1;
+    }
+  }
+
+Plymouth.SetDisplayNormalFunction(display_normal_callback);
+
+
+#----------------------------------------- Message --------------------------------
+
+message_sprite = Sprite();
+message_sprite.SetPosition(picasso_x + picasso_text_x, picasso_y + picasso_text_y, 10000);
+
+fun message_callback (text)
+{
+  dialog_setup();
+  my_image = Image.Text(text, 0, 0, 0);
+  message_sprite.SetImage(my_image);
+}
+
+Plymouth.SetMessageFunction(message_callback);

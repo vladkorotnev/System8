@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Mac OS 8
+Description=This theme is inspired by Mac OS 8. By akasaka, 2019
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/System8
+ScriptFile=/usr/share/plymouth/themes/System8/System8.script
